@@ -1,5 +1,5 @@
-# pick4_learning_ranker_FULL_TESTING.py
-# Run: streamlit run pick4_learning_ranker_FULL_TESTING.py
+# pick4_learning_ranker_FULL_TESTING_v2.py
+# Run: streamlit run pick4_learning_ranker_FULL_TESTING_v2.py
 
 import streamlit as st
 import pandas as pd
@@ -32,7 +32,6 @@ def zfill4(x) -> str:
 
 
 def safe_to_datetime(series):
-    # Robust parse for things like "Mon, Mar 2, 2020"
     return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
 
 
@@ -54,7 +53,6 @@ def normalize(s: pd.Series) -> pd.Series:
 
 
 def perms_for_family(fam_key):
-    # fam_key is tuple of digits like ('3','3','8','9')
     return sorted(set("".join(p) for p in itertools.permutations(fam_key, 4)))  # 12 perms
 
 
@@ -66,7 +64,6 @@ def recency_weight(days_since: float, half_life_days: float) -> float:
 
 
 def load_any_csv(file_obj):
-    # Attempt CSV parsing with delimiter sniffing
     try:
         return pd.read_csv(file_obj, sep=None, engine="python")
     except Exception:
@@ -84,18 +81,11 @@ def has_required_cols(df: pd.DataFrame) -> bool:
 
 
 def split_cols_loose(text: str):
-    # split on tabs OR 2+ spaces (Notepad aligned columns)
     parts = re.split(r"(?:\t+|\s{2,})", text.strip())
     return [p.strip() for p in parts if p.strip()]
 
 
 def extract_date_and_rest(line: str):
-    """
-    Expected date formats at line start like:
-      "Mon, Mar 2, 2020 ..."
-      "Tue, Jul 11, 2023 ..."
-    We capture everything up through the 4-digit year.
-    """
     m = re.match(r"^\s*(.+?\b\d{4}\b)\s+(.*)$", line.strip())
     if not m:
         return None, None
@@ -103,11 +93,6 @@ def extract_date_and_rest(line: str):
 
 
 def extract_result_token(line: str):
-    """
-    Find a Pick4 result token:
-      3-8-9-8  or 3898 or 3 8 9 8 (rare)
-    We'll take the LAST matching token in the line.
-    """
     candidates = re.findall(r"(\d(?:[-\s]\d){3}|\b\d{4}\b)", line)
     if not candidates:
         return None
@@ -115,44 +100,31 @@ def extract_result_token(line: str):
 
 
 def parse_raw_text_to_df(text: str) -> pd.DataFrame:
-    """
-    Parse raw TXT lines like your Notepad format into columns:
-    date | state | game | result
-
-    Handles extra trailing info like ", Fireball: 6" or ", Sum It Up: 29"
-    """
     rows = []
     lines = [ln.strip("\n\r") for ln in text.splitlines() if ln.strip()]
     for ln in lines:
-        # Skip obvious headers if present
-        if ln.strip().lower().startswith("date") and "state" in ln.lower() and "result" in ln.lower():
+        low = ln.strip().lower()
+        if low.startswith("date") and "state" in low and "result" in low:
             continue
 
         date_str, rest = extract_date_and_rest(ln)
         if not date_str or not rest:
             continue
 
-        # Find result token anywhere (usually end)
         res_token = extract_result_token(ln)
         if not res_token:
             continue
         result = zfill4(res_token)
 
-        # Remove everything after the result token to isolate state+game segment
-        # (keeps the part BEFORE the result)
         split_idx = rest.rfind(res_token)
         if split_idx != -1:
             left = rest[:split_idx].strip()
         else:
-            # fallback: remove last occurrence from full line
             idx = ln.rfind(res_token)
             left = ln[:idx].strip()
-
-            # remove date from left if possible
             if left.startswith(date_str):
                 left = left[len(date_str):].strip()
 
-        # Now split left into columns (state, game) by tabs / 2+ spaces
         parts = split_cols_loose(left)
 
         state = None
@@ -162,8 +134,6 @@ def parse_raw_text_to_df(text: str) -> pd.DataFrame:
             state = parts[0]
             game = parts[1]
         elif len(parts) == 1:
-            # Weak fallback: guess boundary using common game keywords
-            # We'll try to find the first keyword occurrence and split there.
             s = parts[0]
             keywords = ["Pick", "Cash", "Win", "Daily", "Four", "4"]
             found_at = None
@@ -176,7 +146,6 @@ def parse_raw_text_to_df(text: str) -> pd.DataFrame:
                 state = s[:found_at].strip()
                 game = s[found_at:].strip()
             else:
-                # If we truly can't split, skip this row (better than wrong parsing)
                 continue
         else:
             continue
@@ -195,17 +164,10 @@ def parse_raw_text_to_df(text: str) -> pd.DataFrame:
     return df
 
 
-def parse_upload(file_obj, label: str) -> pd.DataFrame:
-    """
-    Accept either:
-      - CSV with headers (date,state,game,result)
-      - TXT without headers (fixed format lines)
-    """
-    # 1) Try CSV parse
+def parse_upload(file_obj) -> pd.DataFrame:
     df_csv = load_any_csv(file_obj)
     if df_csv is not None and not df_csv.empty:
-        cols = [c.strip().lower() for c in df_csv.columns]
-        df_csv.columns = cols
+        df_csv.columns = [c.strip().lower() for c in df_csv.columns]
         if has_required_cols(df_csv):
             df = df_csv.copy()
             df["date"] = safe_to_datetime(df["date"])
@@ -215,38 +177,29 @@ def parse_upload(file_obj, label: str) -> pd.DataFrame:
             df = df.dropna(subset=["date", "state", "game", "result"])
             return df
 
-    # 2) Fallback: treat as raw text
     file_obj.seek(0)
     raw_bytes = file_obj.read()
     if isinstance(raw_bytes, bytes):
         text = raw_bytes.decode("utf-8", errors="ignore")
     else:
-        # sometimes Streamlit gives str
         text = str(raw_bytes)
 
-    df_txt = parse_raw_text_to_df(text)
-    return df_txt
+    return parse_raw_text_to_df(text)
 
 
 # ------------------------------------------------------------
 # Upload UI
 # ------------------------------------------------------------
-st.markdown("### Upload Data (CSV with headers OR TXT with aligned columns is OK)")
-
-hits_file = st.file_uploader(
-    "Upload 5-year HITS file (all states/games; these families)",
-    type=["csv", "txt"],
-    accept_multiple_files=False,
-)
-
+st.markdown("### Upload Data (CSV with headers OR TXT aligned columns is OK)")
+hits_file = st.file_uploader("Upload 5-year HITS file (your 3389/3889/3899 hits list)", type=["csv", "txt"])
 stream_files = st.file_uploader(
-    "Upload 2-year STREAM history file(s) (full Pick-4 results). You can upload multiple and I will combine them.",
+    "Upload 2-year STREAM history file(s) (FULL draw history per state/game). Optional for straight recency boosting.",
     type=["csv", "txt"],
-    accept_multiple_files=True,
+    accept_multiple_files=True
 )
 
 with st.expander("Learning controls (optional)", expanded=False):
-    st.markdown("**State/Game ranking weights:**")
+    st.markdown("**State/Game ranking weights (HITS-based):**")
     w_rate = st.slider("Weight: Hit frequency", 0.0, 1.0, 0.45, 0.05)
     w_rec  = st.slider("Weight: Recency (drought)", 0.0, 1.0, 0.30, 0.05)
     w_cons = st.slider("Weight: Consistency (months with hits)", 0.0, 1.0, 0.20, 0.05)
@@ -258,50 +211,45 @@ with st.expander("Learning controls (optional)", expanded=False):
         total_w = 4.0
 
     st.markdown("**Straight ordering learning (state-specific 12 straights per family):**")
+    st.caption("Straights are learned from the HITS file (true hit-order). STREAM file only boosts recency if it contains these families.")
     half_life = st.slider("Recency half-life (days)", 30, 365, 120, 15)
     alpha = st.slider("Smoothing alpha (Laplace)", 0.1, 5.0, 1.0, 0.1)
     recency_mix = st.slider("Blend recency vs frequency (0=freq only, 1=recency only)", 0.0, 1.0, 0.30, 0.05)
 
-if not hits_file or not stream_files:
-    st.info("Upload the 5-year HITS file and at least one 2-year STREAM file to run learning + ranking.")
+if not hits_file:
+    st.info("Upload the 5-year HITS file to run.")
     st.stop()
 
 # ------------------------------------------------------------
 # Parse uploads
 # ------------------------------------------------------------
-hits = parse_upload(hits_file, "HITS")
+hits = parse_upload(hits_file)
 if hits.empty:
-    st.error("Could not parse the HITS file into date/state/game/result. Your TXT format is supported, but this upload parsed to 0 rows.")
+    st.error("Could not parse the HITS file into date/state/game/result (0 rows parsed).")
     st.stop()
 
-stream_list = []
-for f in stream_files:
-    df = parse_upload(f, "STREAM")
-    if not df.empty:
-        stream_list.append(df)
-
-if not stream_list:
-    st.error("Could not parse any STREAM file into date/state/game/result. Check the upload format.")
-    st.stop()
-
-stream = pd.concat(stream_list, ignore_index=True)
+stream = None
+if stream_files:
+    stream_list = []
+    for f in stream_files:
+        df = parse_upload(f)
+        if not df.empty:
+            stream_list.append(df)
+    if stream_list:
+        stream = pd.concat(stream_list, ignore_index=True)
 
 # Add family fields
 hits["family"] = hits["result"].apply(infer_family)
 hits = hits[hits["family"].isin(FAMILY_NAMES)]
 
-stream["family"] = stream["result"].apply(infer_family)
-
-# stream_target only needs those families for permutation learning
-stream_target = stream[stream["family"].isin(FAMILY_NAMES)].copy()
-
 if hits.empty:
-    st.error("After parsing, the HITS file contains 0 valid rows for families 3389/3889/3899.")
+    st.error("After parsing, HITS contains 0 rows matching families 3389/3889/3899.")
     st.stop()
 
-if stream_target.empty:
-    st.error("After parsing, the STREAM file(s) contain 0 rows matching families 3389/3889/3899.")
-    st.stop()
+stream_target = None
+if stream is not None and not stream.empty:
+    stream["family"] = stream["result"].apply(infer_family)
+    stream_target = stream[stream["family"].isin(FAMILY_NAMES)].copy()
 
 # ------------------------------------------------------------
 # A) Master ranking — ALL State/Game streams (from HITS)
@@ -316,9 +264,7 @@ for (state, game), g in hits.groupby(["state", "game"]):
     g = g.sort_values("date")
     hits_count = int(len(g))
 
-    # Comparable across streams: hits per day over global window
     hit_rate = hits_count / global_days
-
     days_since_last = int((global_max - g["date"].max()).days)
     recency_score = 1.0 / (days_since_last + 1.0)
 
@@ -349,7 +295,6 @@ for (state, game), g in hits.groupby(["state", "game"]):
     })
 
 state_df = pd.DataFrame(rows)
-
 state_df["Score"] = (
     (w_rate / total_w) * normalize(state_df["HitRate"]) +
     (w_rec  / total_w) * normalize(state_df["RecencyScore"]) +
@@ -361,7 +306,7 @@ state_df = state_df.sort_values("Score", ascending=False).reset_index(drop=True)
 state_df.insert(0, "Rank", state_df.index + 1)
 
 st.markdown("## A) Master Ranking — All States / All Games (Most → Least Likely)")
-st.caption(f"Learned from HITS window: {global_min.date()} → {global_max.date()}  |  Rows used: {len(hits)}")
+st.caption(f"HITS window: {global_min.date()} → {global_max.date()}  |  HITS rows used: {len(hits)}")
 st.dataframe(state_df, use_container_width=True, height=520)
 
 st.download_button(
@@ -379,7 +324,6 @@ family_df = state_df[[
     "Rank", "State", "Game", "Score", "Hits", "LastHitDate", "DaysSinceLastHit",
     "Share_3389", "Share_3889", "Share_3899"
 ]].copy()
-
 st.dataframe(family_df, use_container_width=True, height=420)
 
 st.download_button(
@@ -390,57 +334,86 @@ st.download_button(
 )
 
 # ------------------------------------------------------------
-# C) State-specific 12-straight ordering per family (from STREAM)
+# C) State-specific 12-straight ordering per family
+#    Primary: learned from HITS (true winning straight order)
+#    Optional boost: if STREAM contains these families, use it as recency booster
 # ------------------------------------------------------------
 st.markdown("## C) State-Specific Straight Ordering (All 12 shown, graded, ranked)")
+if stream_target is None or stream_target.empty:
+    st.warning("STREAM file contains 0 occurrences of 3389/3889/3899-family numbers. Straights will be learned from HITS only (still state-specific).")
 
-# Precompute perms per family
 fam_perm = {name: perms_for_family(key) for key, name in FAMILIES.items()}
-
-# Determine which state/games exist in stream_target
-stream_groups = stream_target.groupby(["state", "game"])
 rank_lookup = {(r.State, r.Game): int(r.Rank) for r in state_df.itertuples(index=False)}
 
-available_pairs = sorted(
-    [(s, g) for (s, g) in stream_groups.groups.keys()],
-    key=lambda x: rank_lookup.get(x, 10**9)
-)
-
+available_pairs = list(state_df[["State", "Game"]].itertuples(index=False, name=None))
 selected_pair = st.selectbox(
-    "Select a State/Game (dropdown ordered by MASTER rank when available):",
+    "Select a State/Game:",
     options=available_pairs,
     index=0,
     format_func=lambda x: f"{x[0]} — {x[1]}  (MASTER rank: {rank_lookup.get(x, 'N/A')})"
 )
 
-def compute_straight_tables_for_pair(state: str, game: str):
-    s = stream_target[(stream_target["state"] == state) & (stream_target["game"] == game)].copy()
-    if s.empty:
+def tables_from_hits_and_stream(state: str, game: str):
+    # HIT source
+    h = hits[(hits["state"] == state) & (hits["game"] == game)].copy()
+    if h.empty:
         return None
 
-    out = {}
-    latest_date = s["date"].max()
+    # Optional stream source
+    s = None
+    if stream_target is not None and not stream_target.empty:
+        s = stream_target[(stream_target["state"] == state) & (stream_target["game"] == game)].copy()
+        if s.empty:
+            s = None
 
+    # Latest date for recency reference
+    latest_date = h["date"].max()
+    if s is not None:
+        latest_date = max(latest_date, s["date"].max())
+
+    out = {}
     for fam in FAMILY_NAMES:
-        sf = s[s["family"] == fam].copy()
         perms = fam_perm[fam]
 
-        total_fam = int(len(sf))
-        counts = sf["result"].value_counts().to_dict()
-        last_seen_map = sf.groupby("result")["date"].max().to_dict() if total_fam else {}
+        hf = h[h["family"] == fam].copy()
+        h_total = int(len(hf))
+        h_counts = hf["result"].value_counts().to_dict()
+        h_last = hf.groupby("result")["date"].max().to_dict() if h_total else {}
 
+        if s is not None:
+            sf = s[s["family"] == fam].copy()
+            s_total = int(len(sf))
+            s_counts = sf["result"].value_counts().to_dict()
+            s_last = sf.groupby("result")["date"].max().to_dict() if s_total else {}
+        else:
+            s_total = 0
+            s_counts = {}
+            s_last = {}
+
+        # Combine counts (HITS + STREAM) for probability
+        # STREAM is usually shorter/more recent; we don't overweight it—just add counts.
+        total = h_total + s_total
         rows = []
         for p in perms:
-            c = int(counts.get(p, 0))
-            if total_fam > 0:
-                prob = (c + alpha) / (total_fam + alpha * len(perms))
+            c = int(h_counts.get(p, 0) + s_counts.get(p, 0))
+
+            # Laplace smoothing probability among 12 perms
+            if total > 0:
+                prob = (c + alpha) / (total + alpha * len(perms))
             else:
                 prob = 1.0 / len(perms)
 
-            if p in last_seen_map:
-                days_since = int((latest_date - last_seen_map[p]).days)
+            # Recency: prefer stream last_seen if it exists, else hits
+            last_seen_dt = None
+            if p in s_last:
+                last_seen_dt = s_last[p]
+            elif p in h_last:
+                last_seen_dt = h_last[p]
+
+            if last_seen_dt is not None:
+                days_since = int((latest_date - last_seen_dt).days)
                 rec_w = recency_weight(days_since, half_life)
-                last_seen = last_seen_map[p].date()
+                last_seen = last_seen_dt.date()
             else:
                 days_since = None
                 rec_w = 0.0
@@ -450,11 +423,13 @@ def compute_straight_tables_for_pair(state: str, game: str):
 
             rows.append({
                 "Straight": p,
-                "Count": c,
+                "Count(H+S)": c,
                 "Prob_Smoothed": float(prob),
                 "LastSeen": last_seen,
                 "DaysSinceSeen": days_since,
                 "Score": float(score),
+                "HITS_Count": int(h_counts.get(p, 0)),
+                "STREAM_Count": int(s_counts.get(p, 0)),
             })
 
         df = pd.DataFrame(rows).sort_values("Score", ascending=False).reset_index(drop=True)
@@ -463,20 +438,15 @@ def compute_straight_tables_for_pair(state: str, game: str):
 
     return out
 
-tables = compute_straight_tables_for_pair(*selected_pair)
+tables = tables_from_hits_and_stream(*selected_pair)
 if tables is None:
-    st.warning("No target-family stream rows found for this selection.")
+    st.warning("No HITS rows found for this state/game (unexpected).")
 else:
-    hit_row = state_df[(state_df["State"] == selected_pair[0]) & (state_df["Game"] == selected_pair[1])]
-    if not hit_row.empty:
-        rr = hit_row.iloc[0]
-        st.caption(
-            f"Winner-specific likelihood (from 5y HITS): "
-            f"3389={rr['Share_3389']:.1%} | 3889={rr['Share_3889']:.1%} | 3899={rr['Share_3899']:.1%}  "
-            f"(HITS={int(rr['Hits'])}, LastHit={rr['LastHitDate']}, DaysSince={int(rr['DaysSinceLastHit'])})"
-        )
-    else:
-        st.caption("This state/game does not appear in HITS (cannot show winner-specific shares).")
+    rr = state_df[(state_df["State"] == selected_pair[0]) & (state_df["Game"] == selected_pair[1])].iloc[0]
+    st.caption(
+        f"Winner-family likelihood (HITS): 3389={rr['Share_3389']:.1%} | 3889={rr['Share_3889']:.1%} | 3899={rr['Share_3899']:.1%} "
+        f"(HITS={int(rr['Hits'])}, LastHit={rr['LastHitDate']}, DaysSince={int(rr['DaysSinceLastHit'])})"
+    )
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -495,55 +465,26 @@ else:
 st.markdown("## D) Download FULL Straight Rankings (All states/games • all 3 families • all 12 straights)")
 
 export_rows = []
-for (state, game), s in stream_groups:
-    latest_date = s["date"].max()
-
+for state, game in available_pairs:
+    tables = tables_from_hits_and_stream(state, game)
+    if tables is None:
+        continue
+    master_rank = rank_lookup.get((state, game), None)
     for fam in FAMILY_NAMES:
-        sf = s[s["family"] == fam].copy()
-        perms = fam_perm[fam]
-        total_fam = int(len(sf))
-        counts = sf["result"].value_counts().to_dict()
-        last_seen_map = sf.groupby("result")["date"].max().to_dict() if total_fam else {}
+        df = tables[fam].copy()
+        df["State"] = state
+        df["Game"] = game
+        df["Family"] = fam
+        df["MASTER_Rank"] = master_rank
+        export_rows.append(df)
 
-        tmp = []
-        for p in perms:
-            c = int(counts.get(p, 0))
-            if total_fam > 0:
-                prob = (c + alpha) / (total_fam + alpha * len(perms))
-            else:
-                prob = 1.0 / len(perms)
-
-            if p in last_seen_map:
-                days_since = int((latest_date - last_seen_map[p]).days)
-                rec_w = recency_weight(days_since, half_life)
-                last_seen = last_seen_map[p].date()
-            else:
-                days_since = None
-                rec_w = 0.0
-                last_seen = None
-
-            score = (1.0 - recency_mix) * prob + recency_mix * rec_w
-            tmp.append((p, c, prob, last_seen, days_since, score))
-
-        tmp_sorted = sorted(tmp, key=lambda x: x[-1], reverse=True)
-        for rank, (p, c, prob, last_seen, days_since, score) in enumerate(tmp_sorted, start=1):
-            export_rows.append({
-                "State": state,
-                "Game": game,
-                "Family": fam,
-                "Straight": p,
-                "Rank": rank,
-                "Score": float(score),
-                "Count": int(c),
-                "Prob_Smoothed": float(prob),
-                "LastSeen": last_seen,
-                "DaysSinceSeen": days_since,
-                "FamilyTotalCount": total_fam,
-                "MASTER_Rank": rank_lookup.get((state, game), None),
-            })
-
-export_df = pd.DataFrame(export_rows)
-export_df = export_df.sort_values(
+export_df = pd.concat(export_rows, ignore_index=True)
+export_df = export_df[[
+    "State", "Game", "MASTER_Rank",
+    "Family", "Rank", "Straight",
+    "Score", "Prob_Smoothed", "Count(H+S)", "HITS_Count", "STREAM_Count",
+    "LastSeen", "DaysSinceSeen"
+]].sort_values(
     by=["MASTER_Rank", "State", "Game", "Family", "Rank"],
     ascending=[True, True, True, True, True],
     na_position="last"
