@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta, date
+import itertools
 
 st.set_page_config(layout="wide")
-st.title("Pick 4 (3389 / 3889 / 3899) — Master Ranking with History-Learned Recency+Due (PARSER FIXED)")
+st.title("Pick 4 (3389/3889/3899) — State/Game Predictor (Safer Due + Schedule + Optional Straights)")
 
 # -----------------------------
 # Families
@@ -16,7 +17,11 @@ FAMILIES = {
     ("3", "8", "9", "9"): "3899",
 }
 FAMILY_NAMES = ["3389", "3889", "3899"]
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+# -----------------------------
+# Utilities
+# -----------------------------
 def safe_to_datetime(series):
     return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
 
@@ -29,10 +34,27 @@ def infer_family(num4: str):
     digs = tuple(sorted(list(zfill4(num4))))
     return FAMILIES.get(digs)
 
+def normalize_01(s):
+    s = pd.Series(s).astype(float)
+    denom = s.max() - s.min()
+    if denom == 0 or np.isnan(denom):
+        return pd.Series([0.5] * len(s), index=s.index)
+    return (s - s.min()) / (denom + 1e-12)
+
+def dom_bin(d: date):
+    # bins: 1-7, 8-14, 15-21, 22-28, 29-31
+    day = d.day
+    if day <= 7: return 0
+    if day <= 14: return 1
+    if day <= 21: return 2
+    if day <= 28: return 3
+    return 4
+
 # -----------------------------
-# Parser helpers (FIXED)
+# Robust parsing (tab-separated, Fireball appended, wrapped Fireball lines)
 # -----------------------------
-FB_KEYWORDS = ["fireball", "wild ball", "superball", "sum it up", "lucky sum"]
+FB_PREFIX_RE = re.compile(r"^(Fireball|Wild Ball|Superball|Sum It Up|Lucky Sum)\s*:\s*\d+\s*$", flags=re.I)
+DIGIT_ONLY_RE = re.compile(r"^\d+\s*$")
 
 def stitch_wrapped_lines(text: str) -> str:
     """
@@ -41,125 +63,63 @@ def stitch_wrapped_lines(text: str) -> str:
       "9"
     or:
       "Fireball: 9"
-    back onto the previous record.
+    back onto the previous record line.
     """
-    raw_lines = [ln.rstrip("\n\r") for ln in text.splitlines()]
+    lines = [ln.rstrip("\n\r") for ln in text.splitlines()]
     out = []
-    for ln in raw_lines:
+    for ln in lines:
         if not ln.strip():
             continue
 
-        s = ln.strip()
-
-        # If this line has tabs, it's a normal record line
+        # If it has a tab, treat as a proper record line
         if "\t" in ln:
             out.append(ln)
             continue
 
-        # No tabs: could be a wrapped Fireball continuation or junk
+        # No tabs: possibly a wrapped continuation (Fireball etc.)
         if not out:
-            # nothing to attach to
             continue
 
-        prev = out[-1]
+        s = ln.strip()
+        prev = out[-1].rstrip()
 
-        # Case A: line is like "Fireball: 9"
-        if re.match(r"^(Fireball|Wild Ball|Superball|Sum It Up|Lucky Sum)\s*:\s*\d+\s*$", s, flags=re.I):
-            # attach if previous ends with ":" or contains keyword with trailing colon
-            if prev.rstrip().endswith(":") or any(k in prev.lower() and prev.rstrip().endswith(":") for k in FB_KEYWORDS):
-                out[-1] = prev.rstrip() + " " + s
-            else:
-                # if it doesn't look attachable, ignore
-                continue
+        if FB_PREFIX_RE.match(s):
+            if prev.endswith(":"):
+                out[-1] = prev + " " + s
             continue
 
-        # Case B: line is just a digit (e.g., "9") and prev ends with Fireball:
-        if re.match(r"^\d+\s*$", s):
-            if prev.rstrip().endswith(":") or any(k in prev.lower() and prev.rstrip().endswith(":") for k in FB_KEYWORDS):
-                out[-1] = prev.rstrip() + " " + s
-            else:
-                continue
+        if DIGIT_ONLY_RE.match(s):
+            if prev.endswith(":"):
+                out[-1] = prev + " " + s
             continue
 
-        # Otherwise ignore stray non-tab line
+        # otherwise ignore stray line
         continue
 
     return "\n".join(out)
 
 def extract_pick4_from_result_field(result_field: str):
     """
-    Extract the FIRST 4-digit pick4 result from a result field that may contain extras:
-      "3-9-3-8, Fireball: 9" -> "3938"
-      "3938 Fireball: 9"     -> "3938"
-      "3 9 3 8"              -> "3938"
+    Extract FIRST pick4 result from a field like:
+      "3-9-3-8, Fireball: 9" -> 3938
+      "3 9 3 8"              -> 3938
+      "3938 Fireball: 9"     -> 3938
     """
     if result_field is None:
         return None
-
     s = str(result_field)
 
-    # Prefer digit-delimited formats: d-d-d-d or d d d d
     m = re.search(r"(\d)\s*[-\s]\s*(\d)\s*[-\s]\s*(\d)\s*[-\s]\s*(\d)", s)
     if m:
         return f"{m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}"
 
-    # Fallback: any 4 consecutive digits
     m = re.search(r"\b(\d{4})\b", s)
     if m:
         return m.group(1)
 
     return None
 
-def parse_tab_text_to_df(text: str) -> pd.DataFrame:
-    """
-    Strict tab parsing:
-      date \t state \t game \t result(+extras...)
-    Keeps all streams found. No regex across columns.
-    """
-    rows = []
-    for ln in text.splitlines():
-        if not ln.strip():
-            continue
-
-        low = ln.strip().lower()
-        if low.startswith("date") and ("state" in low) and ("result" in low):
-            continue
-
-        if "\t" not in ln:
-            continue
-
-        parts = ln.split("\t")
-        if len(parts) < 4:
-            continue
-
-        date_str = parts[0].strip()
-        state = parts[1].strip()
-        game = parts[2].strip()
-
-        # Join the rest (some sources may add extra tab columns)
-        result_field = " ".join(p.strip() for p in parts[3:] if p.strip())
-        pick4 = extract_pick4_from_result_field(result_field)
-        if not pick4:
-            continue
-
-        rows.append({"date": date_str, "state": state, "game": game, "result": zfill4(pick4)})
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    df["date"] = safe_to_datetime(df["date"])
-    df["state"] = df["state"].astype(str).str.strip()
-    df["game"] = df["game"].astype(str).str.strip()
-    df["result"] = df["result"].apply(zfill4)
-    df = df.dropna(subset=["date", "state", "game", "result"])
-    return df
-
 def load_any_csv(file_obj):
-    """
-    Try pandas CSV sniffing first (comma/semicolon/etc).
-    If that fails, try tab-delimited.
-    """
     try:
         return pd.read_csv(file_obj, sep=None, engine="python")
     except Exception:
@@ -184,68 +144,108 @@ def parse_upload(file_obj) -> pd.DataFrame:
             df = df.dropna(subset=["date", "state", "game", "result"])
             return df
 
-    # 2) Raw text: stitch wrapped lines then parse tabs
+    # 2) Raw text: stitch wrapped lines, then parse tab columns
     file_obj.seek(0)
     raw = file_obj.read()
     text = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else str(raw)
+    text = stitch_wrapped_lines(text)
 
-    text2 = stitch_wrapped_lines(text)
-    df_tab = parse_tab_text_to_df(text2)
-    return df_tab
-
-# -----------------------------
-# History-learned Recency+Due: hazard curve from gaps
-# -----------------------------
-def build_gap_hazard(hit_dates_by_stream, t_max=365, smooth_ema=0.25):
-    gap_lengths = []
-    for dates in hit_dates_by_stream.values():
-        if len(dates) < 2:
+    rows = []
+    for ln in text.splitlines():
+        if not ln.strip():
             continue
-        dates = sorted(dates)
-        gaps = [(dates[i] - dates[i-1]).days for i in range(1, len(dates))]
-        gaps = [g for g in gaps if g > 0]
-        gap_lengths.extend(gaps)
+        low = ln.strip().lower()
+        if low.startswith("date") and ("state" in low) and ("result" in low):
+            continue
+        if "\t" not in ln:
+            continue
 
-    if not gap_lengths:
-        return np.full(t_max+1, 1e-6), {"gap_count": 0, "t_max": t_max}
+        parts = ln.split("\t")
+        if len(parts) < 4:
+            continue
 
-    gaps = np.array(gap_lengths, dtype=int)
-    gaps = np.clip(gaps, 1, t_max)
+        date_str = parts[0].strip()
+        state = parts[1].strip()
+        game = parts[2].strip()
+        result_field = " ".join(p.strip() for p in parts[3:] if p.strip())
 
-    at_risk = np.zeros(t_max+1, dtype=float)
-    events = np.zeros(t_max+1, dtype=float)
-    for t in range(1, t_max+1):
-        at_risk[t] = np.sum(gaps >= t)
-        events[t] = np.sum(gaps == t)
+        pick4 = extract_pick4_from_result_field(result_field)
+        if not pick4:
+            continue
 
-    hazard = np.zeros(t_max+1, dtype=float)
-    for t in range(1, t_max+1):
-        hazard[t] = (events[t] / at_risk[t]) if at_risk[t] > 0 else 0.0
+        rows.append({"date": date_str, "state": state, "game": game, "result": zfill4(pick4)})
 
-    haz_s = hazard.copy()
-    for t in range(2, t_max+1):
-        haz_s[t] = smooth_ema * hazard[t] + (1.0 - smooth_ema) * haz_s[t-1]
-
-    meta = {"gap_count": int(len(gap_lengths)), "t_max": int(t_max)}
-    return haz_s, meta
-
-def normalize_01(x):
-    x = np.asarray(x, dtype=float)
-    mn, mx = np.nanmin(x), np.nanmax(x)
-    if np.isclose(mx, mn):
-        return np.zeros_like(x)
-    return (x - mn) / (mx - mn)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["date"] = safe_to_datetime(df["date"])
+    df["state"] = df["state"].astype(str).str.strip()
+    df["game"] = df["game"].astype(str).str.strip()
+    df["result"] = df["result"].apply(zfill4)
+    df = df.dropna(subset=["date", "state", "game", "result"])
+    return df
 
 # -----------------------------
-# UI
+# Per-stream features
 # -----------------------------
-hits_file = st.file_uploader("Upload HIT history (TXT or CSV) — can include Fireball lines", type=["txt", "csv"])
+def gaps_in_days(dates_sorted):
+    if len(dates_sorted) < 2:
+        return []
+    return [(dates_sorted[i] - dates_sorted[i-1]).days for i in range(1, len(dates_sorted))
+            if (dates_sorted[i] - dates_sorted[i-1]).days > 0]
+
+def overdue_percentile(current_drought, past_gaps):
+    if not past_gaps:
+        return 0.5
+    past = np.array(past_gaps, dtype=float)
+    return float(np.mean(past <= current_drought))
+
+def gap_proximity_score(current_drought, past_gaps):
+    """
+    "Sweet spot" control:
+    - High if current drought is near typical (median)
+    - Low if far from typical
+    Uses robust scale (IQR). Returns 0..1.
+    """
+    if not past_gaps or len(past_gaps) < 4:
+        return 0.5
+    g = np.array(past_gaps, dtype=float)
+    med = float(np.median(g))
+    q25 = float(np.quantile(g, 0.25))
+    q75 = float(np.quantile(g, 0.75))
+    iqr = max(q75 - q25, 1.0)
+
+    z = abs(float(current_drought) - med) / iqr
+    # exponential decay: near median => ~1, far => ->0
+    score = float(np.exp(-z))
+    return max(0.0, min(1.0, score))
+
+def weekday_weights(dates_sorted, alpha=1.0):
+    counts = np.zeros(7, dtype=float)
+    for d in dates_sorted:
+        counts[d.weekday()] += 1
+    counts += float(alpha)
+    w = counts / counts.mean()
+    return w
+
+def dom_weights(dates_sorted, alpha=1.0):
+    counts = np.zeros(5, dtype=float)
+    for d in dates_sorted:
+        counts[dom_bin(d)] += 1
+    counts += float(alpha)
+    w = counts / counts.mean()
+    return w
+
+# -----------------------------
+# Uploads
+# -----------------------------
+hits_file = st.file_uploader("Upload HIT history (TXT or CSV) — may include Fireball lines", type=["txt", "csv"])
 if not hits_file:
     st.stop()
 
 hits = parse_upload(hits_file)
 if hits.empty:
-    st.error("Could not parse the file into columns: date, state, game, result.")
+    st.error("Could not parse the file into date/state/game/result.")
     st.stop()
 
 hits["family"] = hits["result"].apply(infer_family)
@@ -254,74 +254,128 @@ if hits.empty:
     st.error("Parsed file, but found 0 rows matching families 3389/3889/3899.")
     st.stop()
 
+# Optional playable list (NOT required for prediction)
+playable_file = st.file_uploader(
+    "Optional: Upload a Playable list (CSV with columns State,Game) to MARK playable streams (no filtering).",
+    type=["csv"]
+)
+playable_set = set()
+if playable_file:
+    p = pd.read_csv(playable_file)
+    p.columns = [c.strip() for c in p.columns]
+    if "State" in p.columns and "Game" in p.columns:
+        playable_set = set((str(a).strip(), str(b).strip()) for a, b in zip(p["State"], p["Game"]))
+
+# Window + prediction date
 hits = hits.sort_values("date")
 start_date = hits["date"].min().date()
 end_date = hits["date"].max().date()
 days_window = (end_date - start_date).days + 1
+prediction_date = end_date
 
-st.caption(f"HITS window USED: {start_date} → {end_date} | rows used: {len(hits):,} | streams found: {hits.groupby(['state','game']).ngroups:,}")
+st.caption(
+    f"History USED: {start_date} → {end_date} | rows: {len(hits):,} | streams found: {hits.groupby(['state','game']).ngroups:,} | prediction ref date: {prediction_date}"
+)
 
-# Build per-stream hit dates
-hit_dates_by_stream = {}
+# -----------------------------
+# Controls (weights fixed to your request; pattern smoothing adjustable)
+# -----------------------------
+with st.expander("Model controls (the scoring weights are fixed to your approved mix)", expanded=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        alpha_pat = st.slider("Pattern smoothing (weekday/month). Higher = weaker boost.", 0.25, 5.0, 1.0, 0.25)
+        schedule_mode = st.selectbox(
+            "ScheduleBoost mode",
+            ["Multiply (weekday*month)", "Average ((weekday+month)/2)"],
+            index=0
+        )
+    with c2:
+        st.write("**Fixed scoring weights**")
+        st.write("- 0.50 HitRate")
+        st.write("- 0.30 OverduePercentile (tempered by GapProximity)")
+        st.write("- 0.10 Reliability")
+        st.write("- 0.10 ScheduleBoost")
+
+# -----------------------------
+# Build per-stream tables
+# -----------------------------
+stream_dates = {}
 for (state, game), g in hits.groupby(["state", "game"], sort=False):
-    hit_dates_by_stream[(state, game)] = list(pd.to_datetime(g["date"]).dt.date)
-
-with st.expander("Scoring controls", expanded=True):
-    colA, colB, colC = st.columns(3)
-    with colA:
-        t_max = st.slider("Max drought days modeled (cap)", 90, 730, 365, 15)
-        ema = st.slider("Hazard smoothing (EMA)", 0.05, 0.60, 0.25, 0.05)
-    with colB:
-        rec_half_life = st.slider("Classic recency half-life (days)", 7, 365, 90, 1)
-        due_half_life = st.slider("Classic due half-life (days)", 7, 365, 120, 1)
-    with colC:
-        w_rate = st.slider("Weight: HitRate", 0.0, 2.0, 0.60, 0.05)
-        w_hist_rd = st.slider("Weight: History-Learned Recency+Due", 0.0, 2.0, 0.80, 0.05)
-        w_cons = st.slider("Weight: Consistency (months with hits)", 0.0, 2.0, 0.25, 0.05)
-        w_rel = st.slider("Weight: Reliability (sample size)", 0.0, 2.0, 0.15, 0.05)
-
-haz_s, haz_meta = build_gap_hazard(hit_dates_by_stream, t_max=t_max, smooth_ema=ema)
+    stream_dates[(state, game)] = list(pd.to_datetime(g["date"]).dt.date)
 
 rows = []
-total_months = pd.period_range(pd.Timestamp(start_date), pd.Timestamp(end_date), freq="M").nunique()
+today_wd = prediction_date.weekday()
+today_db = dom_bin(prediction_date)
 
-for (state, game), dates in hit_dates_by_stream.items():
+for (state, game), dates in stream_dates.items():
     dates_sorted = sorted(dates)
     hits_n = len(dates_sorted)
     last_hit = dates_sorted[-1]
-    days_since = (end_date - last_hit).days
+    drought = (prediction_date - last_hit).days
 
-    hit_rate = hits_n / days_window
+    # base frequency
+    hit_rate = hits_n / max(days_window, 1)
 
-    recency_score = np.exp(-days_since / float(rec_half_life))
-    due_score = 1.0 - np.exp(-days_since / float(due_half_life))
-
-    t = int(min(max(days_since + 1, 1), t_max))
-    hist_rd = float(haz_s[t])
-
-    g = hits[(hits["state"] == state) & (hits["game"] == game)]
-    months_with_hits = g["date"].dt.to_period("M").nunique()
-    consistency = months_with_hits / total_months if total_months else 0.0
-
+    # reliability (sample size stabilizer)
     reliability = float(np.log1p(hits_n))
 
-    fam_counts = g["family"].value_counts().to_dict()
+    # due features (stream-normalized)
+    gaps = gaps_in_days(dates_sorted)
+    over_p = overdue_percentile(drought, gaps)
+    prox = gap_proximity_score(drought, gaps)
+
+    # "tempered due" so extreme droughts don't dominate
+    # If a stream is very overdue but far from its typical gaps, this reduces the due effect.
+    tempered_overdue = over_p * (0.40 + 0.60 * prox)  # keeps some due signal but enforces sweet-spot
+
+    # schedule boost (learned from hit dates)
+    wday_w = weekday_weights(dates_sorted, alpha=float(alpha_pat))
+    dom_w = dom_weights(dates_sorted, alpha=float(alpha_pat))
+    weekday_boost = float(wday_w[today_wd])
+    dom_boost = float(dom_w[today_db])
+
+    if schedule_mode.startswith("Multiply"):
+        sched_boost = weekday_boost * dom_boost
+    else:
+        sched_boost = 0.5 * (weekday_boost + dom_boost)
+
+    # shares
+    gg = hits[(hits["state"] == state) & (hits["game"] == game)]
+    fam_counts = gg["family"].value_counts().to_dict()
     share_3389 = fam_counts.get("3389", 0) / hits_n if hits_n else 0.0
     share_3889 = fam_counts.get("3889", 0) / hits_n if hits_n else 0.0
     share_3899 = fam_counts.get("3899", 0) / hits_n if hits_n else 0.0
 
+    playable = "Unknown"
+    if playable_set:
+        playable = "Yes" if (state, game) in playable_set else "No"
+
+    # simple next-hit estimate from median gap (for pattern detection)
+    # (Not used in Score; just informational)
+    if gaps:
+        med_gap = int(round(float(np.median(gaps))))
+        next_est = last_hit + timedelta(days=med_gap)
+    else:
+        med_gap = None
+        next_est = None
+
     rows.append({
         "State": state,
         "Game": game,
+        "PlayableByUser": playable,
         "Hits": hits_n,
         "LastHitDate": last_hit,
-        "DaysSinceLastHit": days_since,
+        "DaysSinceLastHit": drought,
         "HitRate": hit_rate,
-        "RecencyScore": recency_score,
-        "DueScore": due_score,
-        "HistRecencyDue": hist_rd,
-        "Consistency": consistency,
+        "OverduePercentile": over_p,
+        "GapProximity": prox,
+        "TemperedOverdue": tempered_overdue,
+        "WeekdayBoostToday": weekday_boost,
+        "DayOfMonthBoostToday": dom_boost,
+        "ScheduleBoostToday": sched_boost,
         "Reliability": reliability,
+        "NextHit_EstDate_MedianGap": next_est,
+        "MedianGapDays": med_gap,
         "Share_3389": share_3389,
         "Share_3889": share_3889,
         "Share_3899": share_3899,
@@ -329,64 +383,204 @@ for (state, game), dates in hit_dates_by_stream.items():
 
 df = pd.DataFrame(rows)
 
-df["HitRate_n"] = normalize_01(df["HitRate"])
-df["HistRD_n"]  = normalize_01(df["HistRecencyDue"])
-df["Cons_n"]    = normalize_01(df["Consistency"])
-df["Rel_n"]     = normalize_01(df["Reliability"])
+# Normalize components
+df["n_rate"] = normalize_01(df["HitRate"])
+df["n_due"]  = normalize_01(df["TemperedOverdue"])
+df["n_rel"]  = normalize_01(df["Reliability"])
+df["n_sched"] = normalize_01(df["ScheduleBoostToday"])
 
+# Fixed scoring weights (your request)
 df["Score"] = (
-    w_rate * df["HitRate_n"] +
-    w_hist_rd * df["HistRD_n"] +
-    w_cons * df["Cons_n"] +
-    w_rel * df["Rel_n"]
+    0.50 * df["n_rate"] +
+    0.30 * df["n_due"] +
+    0.10 * df["n_rel"] +
+    0.10 * df["n_sched"]
 )
 
 df = df.sort_values("Score", ascending=False).reset_index(drop=True)
 df.insert(0, "Rank", df.index + 1)
 
-st.markdown("## A) Master Ranking — All States / All Games (Most → Least likely)")
-st.dataframe(df, use_container_width=True, height=600)
+# -----------------------------
+# Coverage estimate (top-K)
+# -----------------------------
+def coverage_table(df_ranked, max_k=60):
+    max_k = min(max_k, len(df_ranked))
+    p_list = df_ranked["HitRate"].to_numpy()
+    prod = 1.0
+    rows = []
+    for k in range(1, max_k + 1):
+        prod *= (1.0 - float(p_list[k-1]))
+        p_at_least_one = 1.0 - prod
+        expected_hits = float(np.sum(p_list[:k]))
+        rows.append({
+            "K_streams_per_day": k,
+            "P(catch ≥1 winner today)": p_at_least_one,
+            "Expected winners per day (anywhere)": expected_hits,
+            "BoxOnlyCost_per_day_$ (K * 0.75)": 0.75 * k,
+        })
+    return pd.DataFrame(rows)
 
-st.download_button(
-    "Download master ranking (CSV)",
-    data=df.to_csv(index=False).encode("utf-8"),
-    file_name="pk4_3389_3889_3899_master_ranking_FIXED.csv",
-    mime="text/csv",
-)
+# -----------------------------
+# Tabs
+# -----------------------------
+tab1, tab2, tab3 = st.tabs(["Master Prediction List", "Schedule Planner", "Straight Estimator (optional upload)"])
 
-st.markdown("## B) How many streams/day to catch ≥1 winner? (based on top-K by Score)")
-max_k = min(50, len(df))
-k_values = list(range(1, max_k + 1))
+with tab1:
+    st.markdown("### Master Prediction List (Most → Least likely)")
+    st.caption("Score uses safer due logic: tempered overdue + sweet-spot control (GapProximity).")
+    st.dataframe(
+        df[[
+            "Rank","State","Game","PlayableByUser","Score",
+            "Hits","LastHitDate","DaysSinceLastHit",
+            "HitRate","OverduePercentile","GapProximity","TemperedOverdue",
+            "ScheduleBoostToday","WeekdayBoostToday","DayOfMonthBoostToday",
+            "NextHit_EstDate_MedianGap","MedianGapDays",
+            "Share_3389","Share_3889","Share_3899"
+        ]],
+        use_container_width=True,
+        height=650
+    )
 
-p_list = df["HitRate"].to_numpy()
-cov_rows = []
-prod = 1.0
-for k in k_values:
-    prod *= (1.0 - float(p_list[k-1]))
-    p_at_least_one = 1.0 - prod
-    expected_hits = float(np.sum(p_list[:k]))
-    cov_rows.append({
-        "K_streams_per_day": k,
-        "P(catch ≥1 winner today)": p_at_least_one,
-        "Expected winners per day (anywhere)": expected_hits,
-        "BoxOnlyCost_per_day_$ (K * 0.75)": 0.75 * k,
-    })
+    st.download_button(
+        "Download master predictions (CSV)",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name="pk4_master_predictions_v2.csv",
+        mime="text/csv"
+    )
 
-cov = pd.DataFrame(cov_rows)
-st.dataframe(cov, use_container_width=True, height=450)
+    st.markdown("### Coverage vs Top-K (scale-back tool)")
+    cov = coverage_table(df, max_k=60)
+    st.dataframe(cov, use_container_width=True, height=420)
+    st.download_button(
+        "Download coverage table (CSV)",
+        data=cov.to_csv(index=False).encode("utf-8"),
+        file_name="pk4_coverage_vs_k_v2.csv",
+        mime="text/csv"
+    )
 
-st.download_button(
-    "Download coverage table (CSV)",
-    data=cov.to_csv(index=False).encode("utf-8"),
-    file_name="pk4_master_coverage_vs_k_FIXED.csv",
-    mime="text/csv",
-)
+with tab2:
+    st.markdown("### Schedule Planner (next 21 days)")
+    st.caption("This does NOT force you to play only these days — it shows where the model sees the best timing advantages.")
 
-with st.expander("Hazard curve details (what the app learned)", expanded=False):
-    st.write(f"Gap count used to learn hazard: {haz_meta['gap_count']:,} | capped at {haz_meta['t_max']} days.")
-    haz_df = pd.DataFrame({
-        "t_days_since_last_hit_plus_1": np.arange(1, t_max+1),
-        "Hazard_smoothed_P(hit_tomorrow)": haz_s[1:t_max+1]
-    })
-    st.dataframe(haz_df.head(60), use_container_width=True)
-    st.dataframe(haz_df.tail(60), use_container_width=True)
+    horizon_days = 21
+    schedule_rows = []
+
+    # Precompute per-stream weekday/dom weights so we can score day-by-day properly
+    per_stream_wday = {}
+    per_stream_dom = {}
+    for (state, game), dates in stream_dates.items():
+        dates_sorted = sorted(dates)
+        per_stream_wday[(state, game)] = weekday_weights(dates_sorted, alpha=float(alpha_pat))
+        per_stream_dom[(state, game)] = dom_weights(dates_sorted, alpha=float(alpha_pat))
+
+    for k in range(0, horizon_days):
+        d = prediction_date + timedelta(days=k)
+        wd = d.weekday()
+        db = dom_bin(d)
+
+        tmp = df.copy()
+
+        # recompute schedule boost for this day
+        boosts = []
+        for r in tmp.itertuples(index=False):
+            wday_w = per_stream_wday[(r.State, r.Game)]
+            dom_w = per_stream_dom[(r.State, r.Game)]
+            weekday_boost = float(wday_w[wd])
+            dom_boost = float(dom_w[db])
+            if schedule_mode.startswith("Multiply"):
+                boosts.append(weekday_boost * dom_boost)
+            else:
+                boosts.append(0.5 * (weekday_boost + dom_boost))
+        tmp["ScheduleBoostDay"] = boosts
+
+        tmp["n_sched_day"] = normalize_01(tmp["ScheduleBoostDay"])
+
+        # same fixed scoring, but swap in the day-specific schedule component
+        tmp["ScoreDay"] = (
+            0.50 * tmp["n_rate"] +
+            0.30 * tmp["n_due"] +
+            0.10 * tmp["n_rel"] +
+            0.10 * tmp["n_sched_day"]
+        )
+
+        tmp = tmp.sort_values("ScoreDay", ascending=False).head(25)
+        tmp = tmp.reset_index(drop=True)
+        tmp["RankThatDay"] = tmp.index + 1
+        tmp["Date"] = d
+        tmp["Weekday"] = WEEKDAYS[wd]
+
+        schedule_rows.append(tmp[[
+            "Date","Weekday","RankThatDay","State","Game","PlayableByUser","ScoreDay","ScheduleBoostDay",
+            "OverduePercentile","GapProximity","HitRate","LastHitDate"
+        ]])
+
+    sched = pd.concat(schedule_rows, ignore_index=True)
+    st.dataframe(sched, use_container_width=True, height=650)
+
+    st.download_button(
+        "Download schedule (CSV)",
+        data=sched.to_csv(index=False).encode("utf-8"),
+        file_name="pk4_schedule_next_21_days_v2.csv",
+        mime="text/csv"
+    )
+
+with tab3:
+    st.markdown("### Straight Estimator (kept; only runs when you upload 24-month stream history)")
+    st.info("Upload a 24-month per-stream file (same columns: date/state/game/result). The app will rank all 12 straights per family for the selected stream.")
+
+    stream_file = st.file_uploader("Upload 24-month per-stream history (TXT or CSV)", type=["txt","csv"], key="stream_upload")
+    if not stream_file:
+        st.stop()
+
+    stream = parse_upload(stream_file)
+    if stream.empty:
+        st.error("Could not parse the stream history file.")
+        st.stop()
+
+    stream["result"] = stream["result"].apply(zfill4)
+    stream["family"] = stream["result"].apply(infer_family)
+    stream = stream[stream["family"].isin(FAMILY_NAMES)].copy()
+    if stream.empty:
+        st.error("Stream file parsed, but contains 0 rows for families 3389/3889/3899.")
+        st.stop()
+
+    stream_pairs = sorted(stream.groupby(["state","game"]).groups.keys())
+    sel = st.selectbox("Pick a State/Game to rank straights:", stream_pairs, format_func=lambda x: f"{x[0]} — {x[1]}")
+    sstate, sgame = sel
+    s = stream[(stream["state"] == sstate) & (stream["game"] == sgame)].copy()
+
+    def perms_for_family(name):
+        fam_key = None
+        for k, v in FAMILIES.items():
+            if v == name:
+                fam_key = k
+                break
+        perms = sorted(set("".join(p) for p in itertools.permutations(fam_key, 4)))
+        return perms
+
+    alpha = 1.0
+    tables = {}
+    for fam in FAMILY_NAMES:
+        sf = s[s["family"] == fam].copy()
+        perms = perms_for_family(fam)
+        total = len(sf)
+        counts = sf["result"].value_counts().to_dict()
+        rows = []
+        for p in perms:
+            c = int(counts.get(p, 0))
+            prob = (c + alpha) / (total + alpha * len(perms)) if total else 1.0 / len(perms)
+            rows.append({"Straight": p, "Count": c, "Prob": float(prob)})
+        t = pd.DataFrame(rows).sort_values("Prob", ascending=False).reset_index(drop=True)
+        t.insert(0, "Rank", t.index + 1)
+        tables[fam] = t
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("#### 3389 — 12 straights")
+        st.dataframe(tables["3389"], use_container_width=True, height=520)
+    with c2:
+        st.markdown("#### 3889 — 12 straights")
+        st.dataframe(tables["3889"], use_container_width=True, height=520)
+    with c3:
+        st.markdown("#### 3899 — 12 straights")
+        st.dataframe(tables["3899"], use_container_width=True, height=520)
