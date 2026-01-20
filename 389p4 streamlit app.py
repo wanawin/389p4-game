@@ -42,7 +42,6 @@ def normalize_01(s):
     return (s - s.min()) / (denom + 1e-12)
 
 def dom_bin(d: date):
-    # bins: 1-7, 8-14, 15-21, 22-28, 29-31
     day = d.day
     if day <= 7: return 0
     if day <= 14: return 1
@@ -73,14 +72,6 @@ FB_PREFIX_RE = re.compile(r"^(Fireball|Wild Ball|Superball|Sum It Up|Lucky Sum)\
 DIGIT_ONLY_RE = re.compile(r"^\d+\s*$")
 
 def stitch_wrapped_lines(text: str) -> str:
-    """
-    Joins continuation lines like:
-      "... 3-9-3-8, Fireball:"
-      "9"
-    or:
-      "Fireball: 9"
-    back onto the previous record line.
-    """
     lines = [ln.rstrip("\n\r") for ln in text.splitlines()]
     out = []
     for ln in lines:
@@ -112,12 +103,6 @@ def stitch_wrapped_lines(text: str) -> str:
     return "\n".join(out)
 
 def extract_pick4_from_result_field(result_field: str):
-    """
-    Extract FIRST pick4 result from a field like:
-      "3-9-3-8, Fireball: 9" -> 3938
-      "3 9 3 8"              -> 3938
-      "3938 Fireball: 9"     -> 3938
-    """
     if result_field is None:
         return None
     s = str(result_field)
@@ -199,6 +184,67 @@ def parse_upload(file_obj) -> pd.DataFrame:
     return df
 
 # -----------------------------
+# Playable list parsing (CSV list OR TXT history)
+# -----------------------------
+def parse_playable_list(file_obj):
+    """
+    Accepts:
+      - CSV with columns State,Game
+      - TXT history in the same tab-separated format as your draw logs (date\tstate\tgame\tresult...)
+      - TXT with lines like "State\tGame" or "State,Game"
+    Returns: set of (state, game)
+    """
+    name = (getattr(file_obj, "name", "") or "").lower()
+
+    # Try CSV first
+    try:
+        file_obj.seek(0)
+        df = pd.read_csv(file_obj, sep=None, engine="python")
+        if df is not None and not df.empty:
+            cols = [c.strip() for c in df.columns]
+            if "State" in cols and "Game" in cols:
+                s = set((str(a).strip(), str(b).strip()) for a, b in zip(df["State"], df["Game"]))
+                return s
+    except Exception:
+        pass
+
+    # Try as full history TXT (date/state/game/result)
+    try:
+        file_obj.seek(0)
+        dfh = parse_upload(file_obj)
+        if dfh is not None and not dfh.empty and {"state", "game"}.issubset(dfh.columns):
+            s = set((str(a).strip(), str(b).strip()) for a, b in zip(dfh["state"], dfh["game"]))
+            return s
+    except Exception:
+        pass
+
+    # Fallback: parse lines as State/Game pairs
+    try:
+        file_obj.seek(0)
+        raw = file_obj.read()
+        text = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else str(raw)
+        pairs = set()
+        for ln in text.splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            if ln.lower().startswith("state") and "game" in ln.lower():
+                continue
+
+            if "\t" in ln:
+                parts = [p.strip() for p in ln.split("\t") if p.strip()]
+            elif "," in ln:
+                parts = [p.strip() for p in ln.split(",") if p.strip()]
+            else:
+                continue
+
+            if len(parts) >= 2:
+                pairs.add((parts[0], parts[1]))
+        return pairs
+    except Exception:
+        return set()
+
+# -----------------------------
 # Per-stream due features
 # -----------------------------
 def gaps_in_days(dates_sorted):
@@ -214,11 +260,6 @@ def overdue_percentile(current_drought, past_gaps):
     return float(np.mean(past <= current_drought))
 
 def gap_proximity_score(current_drought, past_gaps):
-    """
-    Sweet-spot control:
-    - High if drought near stream's typical (median)
-    - Low if far from typical
-    """
     if not past_gaps or len(past_gaps) < 4:
         return 0.5
     g = np.array(past_gaps, dtype=float)
@@ -231,7 +272,7 @@ def gap_proximity_score(current_drought, past_gaps):
     return max(0.0, min(1.0, score))
 
 # -----------------------------
-# Uploads
+# Upload HIT history
 # -----------------------------
 hits_file = st.file_uploader("Upload HIT history (TXT or CSV) — may include Fireball lines", type=["txt", "csv"])
 if not hits_file:
@@ -268,18 +309,14 @@ with st.expander("As-Of Date (controls what 'today' is)", expanded=True):
         help="If As-Of is after your file end, this updates droughts + denominators without needing GAP rows."
     )
 
-# Determine analysis end date
 if as_of_date <= file_end_date:
     analysis_end_date = file_end_date
 else:
     analysis_end_date = as_of_date if assume_no_hits_after_file else file_end_date
 
-# Use this as the "prediction date"
 prediction_date = as_of_date
-
 days_window = (analysis_end_date - start_date).days + 1
 
-# Denominators for schedule rates (calendar days in the analysis window)
 weekday_denoms = count_days_by_weekday(start_date, analysis_end_date)
 dom_denoms = count_days_by_dom_bin(start_date, analysis_end_date)
 
@@ -291,17 +328,18 @@ st.caption(
     f"streams found: {hits.groupby(['state','game']).ngroups:,}"
 )
 
-# Optional playable list (NOT required for prediction)
+# -----------------------------
+# Optional playable list (NOW accepts .txt as well)
+# -----------------------------
 playable_file = st.file_uploader(
-    "Optional: Upload a Playable list (CSV with columns State,Game) to MARK playable streams (no filtering).",
-    type=["csv"]
+    "Optional: Upload a Playable list (CSV State,Game) OR a TXT history file to MARK playable streams (no filtering).",
+    type=["csv", "txt"]
 )
+
 playable_set = set()
 if playable_file:
-    p = pd.read_csv(playable_file)
-    p.columns = [c.strip() for c in p.columns]
-    if "State" in p.columns and "Game" in p.columns:
-        playable_set = set((str(a).strip(), str(b).strip()) for a, b in zip(p["State"], p["Game"]))
+    playable_set = parse_playable_list(playable_file)
+    st.success(f"Playable streams loaded: {len(playable_set):,}")
 
 with st.expander("Model controls (weights fixed to your approved mix)", expanded=True):
     alpha_pat = st.slider(
@@ -336,20 +374,14 @@ for (state, game), dates in stream_dates.items():
     last_hit = dates_sorted[-1]
     drought = (prediction_date - last_hit).days
 
-    # base frequency: hits / (calendar days in window)
     hit_rate = hits_n / max(days_window, 1)
-
-    # reliability (sample size stabilizer)
     reliability = float(np.log1p(hits_n))
 
-    # due features (stream-normalized)
     gaps = gaps_in_days(dates_sorted)
     over_p = overdue_percentile(drought, gaps)
     prox = gap_proximity_score(drought, gaps)
     tempered_overdue = over_p * (0.40 + 0.60 * prox)
 
-    # Rate-based schedule boost (correct denominators)
-    # weekday rate = hits on weekday / number of weekdays in window (with smoothing)
     wcounts = np.zeros(7, dtype=float)
     dcounts = np.zeros(5, dtype=float)
 
@@ -357,7 +389,6 @@ for (state, game), dates in stream_dates.items():
         wcounts[d.weekday()] += 1
         dcounts[dom_bin(d)] += 1
 
-    # Overall base rate (for relative boost). Add tiny epsilon to avoid division explode.
     base = max(hit_rate, 1e-9)
 
     weekday_rate_today = (wcounts[today_wd] + alpha_pat) / (weekday_denoms[today_wd] + alpha_pat)
@@ -366,7 +397,6 @@ for (state, game), dates in stream_dates.items():
     weekday_rel = float(weekday_rate_today / base)
     dom_rel = float(dom_rate_today / base)
 
-    # clip so tiny samples don't create insane boosts
     weekday_rel = float(np.clip(weekday_rel, 0.25, 3.0))
     dom_rel = float(np.clip(dom_rel, 0.25, 3.0))
 
@@ -375,7 +405,6 @@ for (state, game), dates in stream_dates.items():
     else:
         sched_boost = float(0.5 * (weekday_rel + dom_rel))
 
-    # family shares
     gg = hits[(hits["state"] == state) & (hits["game"] == game)]
     fam_counts = gg["family"].value_counts().to_dict()
     share_3389 = fam_counts.get("3389", 0) / hits_n if hits_n else 0.0
@@ -386,7 +415,6 @@ for (state, game), dates in stream_dates.items():
     if playable_set:
         playable = "Yes" if (state, game) in playable_set else "No"
 
-    # next-hit estimate from median gap (informational)
     if gaps:
         med_gap = int(round(float(np.median(gaps))))
         next_est = last_hit + timedelta(days=med_gap)
@@ -418,13 +446,11 @@ for (state, game), dates in stream_dates.items():
 
 df = pd.DataFrame(rows)
 
-# Normalize components for scoring
 df["n_rate"] = normalize_01(df["HitRate"])
 df["n_due"]  = normalize_01(df["TemperedOverdue"])
 df["n_rel"]  = normalize_01(df["Reliability"])
 df["n_sched"] = normalize_01(df["ScheduleBoostToday"])
 
-# Fixed scoring weights
 df["Score"] = (
     0.50 * df["n_rate"] +
     0.30 * df["n_due"] +
@@ -435,9 +461,6 @@ df["Score"] = (
 df = df.sort_values("Score", ascending=False).reset_index(drop=True)
 df.insert(0, "Rank", df.index + 1)
 
-# -----------------------------
-# Coverage estimate (top-K)
-# -----------------------------
 def coverage_table(df_ranked, max_k=60):
     max_k = min(max_k, len(df_ranked))
     p_list = df_ranked["HitRate"].to_numpy()
@@ -455,9 +478,6 @@ def coverage_table(df_ranked, max_k=60):
         })
     return pd.DataFrame(out)
 
-# -----------------------------
-# Tabs
-# -----------------------------
 tab1, tab2, tab3 = st.tabs(["Master Prediction List", "Schedule Planner", "Straight Estimator (optional upload)"])
 
 with tab1:
@@ -504,16 +524,13 @@ with tab2:
         wd = d.weekday()
         db = dom_bin(d)
 
-        # day-specific denominators remain based on analysis window
         denom_wd = weekday_denoms[wd]
         denom_db = dom_denoms[db]
 
         tmp = df.copy()
         boosts = []
 
-        # Recompute day schedule boost per stream
         for r in tmp.itertuples(index=False):
-            # rebuild counts from the hits table for that stream
             dates_sorted = stream_dates[(r.State, r.Game)]
             wcounts = np.zeros(7, dtype=float)
             dcounts = np.zeros(5, dtype=float)
@@ -566,7 +583,7 @@ with tab2:
 
 with tab3:
     st.markdown("### Straight Estimator (kept; only runs when you upload per-stream history)")
-    st.info("Upload a per-stream file (same columns: date/state/game/result). The app ranks all 12 straights per family for the selected stream.")
+    st.info("Upload a per-stream file (TXT or CSV). The app ranks all 12 straights per family for the selected stream.")
 
     stream_file = st.file_uploader("Upload per-stream history (TXT or CSV)", type=["txt","csv"], key="stream_upload")
     if not stream_file:
