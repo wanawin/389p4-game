@@ -1,0 +1,98 @@
+PK4 FAMILY APP — BEST PRACTICES RULEBOOK (Draft v1)
+Date: 2026-01-30
+
+Goal
+- Avoid “switching on the wrong day” by locking ONE primary ranking policy per STRUCTURE.
+- Use other rankings only as tie-breakers or controlled nudges (not day-to-day flips).
+
+Key terms
+- StaticRank (S): Long-run stream strength for a family (3-year baseline).
+- DynamicRank (D): Today’s stream strength using each stream’s latest seed/prev-draw context.
+- PositionMap (P): “Rank-slot strength” map (1–78) showing which rank positions historically contain winners for that family.
+
+Anti-whipsaw policy (non-negotiable)
+1) Do NOT flip modes daily.
+2) Each STRUCTURE gets a locked Primary Policy.
+3) Secondary signals may only reorder or trim within a fixed pool.
+
+Recommended Primary Policy (initial)
+- DOUBLES (AABC): Primary = Dynamic-in-Static-Guardrail (explained below)
+- TRIPLES (AAAB): Primary = to be locked after grid tests
+- DOUBLE-DOUBLES (AABB): Primary = to be locked after grid tests
+
+How to use each ranking safely
+A) StaticRank (S) — “Who is strong in general?”
+Use when:
+- building your baseline watchlist (Top N)
+- seed/prev-draw is missing or unreliable
+Rule:
+- S defines the DEFAULT Top-N watchlist per family.
+
+B) DynamicRank (D) — “Who is strong today?”
+Use when:
+- you have the last 24h daily file + reliable prev draw per stream
+Rule (guardrail):
+- StartPool = Top N by S (example N=50)
+- Re-rank ONLY those N streams by D
+- FinalPlayList = Top K from that re-ranked list (example K=20–30)
+
+C) PositionMap (P) — “Which rank slots win most?”
+Use as tie-breaker/budget cutter only.
+Rules:
+- If two streams are close on D (or S), prefer the one sitting in a historically strong rank-slot.
+- P is NOT a standalone selector. It is a trimming tool.
+
+Blending (stable, no switching)
+- Step 1: StartPool = Top N by StaticRank
+- Step 2: Within StartPool, compute DynamicScore (seed-based)
+- Step 3: CombinedScore = 0.70*DynamicScore + 0.30*StaticScore  (scores, not ranks)
+- Step 4: Break ties using PositionMap strength
+- Step 5: FinalPlayList = Top K
+
+Hysteresis rule (prevents “switching on wrong days”)
+You only change N or K (not the whole policy) when:
+- last 14 days of backtest shows ≥ +5% capture improvement at your chosen K,
+- AND the gain holds for at least 2 consecutive evaluation windows.
+
+Why this works
+- Static = stability
+- Dynamic = responsiveness
+- PositionMap = efficiency
+- Hysteresis = no whiplash
+
+PICK 4 GRID MODULE — WHAT TO TEST
+Grid should be LIGHTWEIGHT (small bonus). It must not dominate ranking.
+
+Candidate grid seed sets (deterministic, easy to test)
+1) Seed-only (last winner digits)
+2) Mirror-only (mirror of last winner digits)
+   Mirror pairs: 0↔5, 1↔6, 2↔7, 3↔8, 4↔9
+3) Coldest-by-position (per stream): coldest digit for each position (P1–P4) over last W draws
+4) ±1 neighborhood: for each seed digit d, include {d-1, d, d+1} (mod-10 option)
+5) Mirror-neighborhood (±5): for each seed digit d, include {d, mirror(d)}
+Optional 6) Pair detector: if a strong pair appears in seed/mirror, boost families containing that pair
+
+Grid features to compute per stream-day
+- CoreCoverage: how many core digits (family digits) appear in grid set
+- CoreAdjacency: do any core pairs land as “neighbors” (define neighbors by grid layout)
+- SeedOverlap: how many core digits are in the seed itself
+- MirrorOverlap: how many core digits appear via mirror transform
+- NeighborDensity: how many core digits appear via ±1 expansion
+
+Grid bonus (keep small)
+- GridBonus = 0.03*(CoreCoverage) + 0.02*(CoreAdjacency) + 0.02*(SeedOverlap)
+- Cap GridBonus at 0.10 (so it can’t override base model)
+
+How we lock grid per structure
+For each structure (AABC, AAAB, AABB):
+- Backtest “No Grid” vs each grid seed set (1–5/6)
+- Evaluate capture at Top K (K=20, 30, 50)
+- Pick the single best performer per structure
+- Lock it; no daily switching
+
+Next actions
+1) Implement grid module with plug-in seed sets
+2) Backtest AABC first (use 389 family as pilot)
+3) Lock best grid seed set for AABC
+4) Repeat for AAAB and AABB
+5) Then integrate GridBonus into app scoring + UI

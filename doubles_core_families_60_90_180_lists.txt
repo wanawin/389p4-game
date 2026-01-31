@@ -1,0 +1,186 @@
+DOUBLES (AABC) core families >=2.00 hits/week — last 60 days
+------------------------------------------------------------
+278: hits=29 | hits/wk=3.38
+359: hits=28 | hits/wk=3.27
+016: hits=25 | hits/wk=2.92
+068: hits=25 | hits/wk=2.92
+129: hits=25 | hits/wk=2.92
+012: hits=24 | hits/wk=2.80
+135: hits=24 | hits/wk=2.80
+457: hits=24 | hits/wk=2.80
+689: hits=24 | hits/wk=2.80
+018: hits=23 | hits/wk=2.68
+167: hits=22 | hits/wk=2.57
+456: hits=22 | hits/wk=2.57
+027: hits=21 | hits/wk=2.45
+038: hits=21 | hits/wk=2.45
+048: hits=21 | hits/wk=2.45
+246: hits=21 | hits/wk=2.45
+249: hits=21 | hits/wk=2.45
+389: hits=21 | hits/wk=2.45
+789: hits=21 | hits/wk=2.45
+029: hits=20 | hits/wk=2.33
+258: hits=20 | hits/wk=2.33
+279: hits=20 | hits/wk=2.33
+357: hits=20 | hits/wk=2.33
+378: hits=20 | hits/wk=2.33
+013: hits=19 | hits/wk=2.22
+025: hits=19 | hits/wk=2.22
+059: hits=19 | hits/wk=2.22
+067: hits=19 | hits/wk=2.22
+149: hits=19 | hits/wk=2.22
+168: hits=19 | hits/wk=2.22
+238: hits=19 | hits/wk=2.22
+345: hits=19 | hits/wk=2.22
+379: hits=19 | hits/wk=2.22
+459: hits=19 | hits/wk=2.22
+489: hits=19 | hits/wk=2.22
+567: hits=19 | hits/wk=2.22
+017: hits=18 | hits/wk=2.10
+019: hits=18 | hits/wk=2.10
+046: hits=18 | hits/wk=2.10
+078: hits=18 | hits/wk=2.10
+146: hits=18 | hits/wk=2.10
+169: hits=18 | hits/wk=2.10
+178: hits=18 | hits/wk=2.10
+236: hits=18 | hits/wk=2.10
+358: hits=18 | hits/wk=2.10
+468: hits=18 | hits/wk=2.10
+479: hits=18 | hits/wk=2.10
+579: hits=18 | hits/wk=2.10
+679: hits=18 | hits/wk=2.10
+
+
+
+DOUBLES (AABC) core families >=2.00 hits/week — last 90 days
+------------------------------------------------------------
+068: hits=40 | hits/wk=3.11
+278: hits=38 | hits/wk=2.96
+359: hits=37 | hits/wk=2.88
+457: hits=35 | hits/wk=2.72
+018: hits=34 | hits/wk=2.64
+249: hits=34 | hits/wk=2.64
+689: hits=34 | hits/wk=2.64
+028: hits=33 | hits/wk=2.57
+245: hits=33 | hits/wk=2.57
+258: hits=33 | hits/wk=2.57
+389: hits=33 | hits/wk=2.57
+379: hits=32 | hits/wk=2.49
+679: hits=32 | hits/wk=2.49
+012: hits=31 | hits/wk=2.41
+016: hits=31 | hits/wk=2.41
+029: hits=31 | hits/wk=2.41
+048: hits=31 | hits/wk=2.41
+059: hits=31 | hits/wk=2.41
+135: hits=31 | hits/wk=2.41
+167: hits=31 | hits/wk=2.41
+169: hits=31 | hits/wk=2.41
+456: hits=31 | hits/wk=2.41
+789: hits=31 | hits/wk=2.41
+027: hits=30 | hits/wk=2.33
+038: hits=30 | hits/wk=2.33
+238: hits=30 | hits/wk=2.33
+357: hits=30 | hits/wk=2.33
+129: hits=29 | hits/wk=2.26
+236: hits=29 | hits/wk=2.26
+489: hits=29 | hits/wk=2.26
+567: hits=29 | hits/wk=2.26
+589: hits=29 | hits/wk=2.26
+017: hits=28 | hits/wk=2.18
+345: hits=28 | hits/wk=2.18
+035: hits=27 | hits/wk=2.10
+067: hits=27 | hits/wk=2.10
+145: hits=27 | hits/wk=2.10
+246: hits=27 | hits/wk=2.10
+348: hits=27 | hits/wk=2.10
+378: hits=27 | hits/wk=2.10
+013: hits=26 | hits/wk=2.02
+146: hits=26 | hits/wk=2.02
+149: hits=26 | hits/wk=2.02
+178: hits=26 | hits/wk=2.02
+459: hits=26 | hits/wk=2.02
+579: hits=26 | hits/wk=2.02
+
+
+
+DOUBLES (AABC) core families >=2.00 hits/week — last 180 days
+-------------------------------------------------------------
+789: hits=62 | hits/wk=2.41
+018: hits=61 | hits/wk=2.37
+068: hits=61 | hits/wk=2.37
+249: hits=61 | hits/wk=2.37
+459: hits=61 | hits/wk=2.37
+357: hits=60 | hits/wk=2.33
+359: hits=60 | hits/wk=2.33
+378: hits=60 | hits/wk=2.33
+048: hits=59 | hits/wk=2.29
+389: hits=59 | hits/wk=2.29
+038: hits=58 | hits/wk=2.26
+278: hits=58 | hits/wk=2.26
+589: hits=57 | hits/wk=2.22
+016: hits=56 | hits/wk=2.18
+146: hits=56 | hits/wk=2.18
+169: hits=56 | hits/wk=2.18
+489: hits=56 | hits/wk=2.18
+689: hits=56 | hits/wk=2.18
+029: hits=55 | hits/wk=2.14
+167: hits=55 | hits/wk=2.14
+379: hits=55 | hits/wk=2.14
+458: hits=55 | hits/wk=2.14
+019: hits=54 | hits/wk=2.10
+028: hits=54 | hits/wk=2.10
+135: hits=54 | hits/wk=2.10
+179: hits=54 | hits/wk=2.10
+245: hits=54 | hits/wk=2.10
+258: hits=54 | hits/wk=2.10
+457: hits=54 | hits/wk=2.10
+027: hits=53 | hits/wk=2.06
+056: hits=53 | hits/wk=2.06
+134: hits=53 | hits/wk=2.06
+239: hits=53 | hits/wk=2.06
+257: hits=53 | hits/wk=2.06
+456: hits=53 | hits/wk=2.06
+023: hits=52 | hits/wk=2.02
+024: hits=52 | hits/wk=2.02
+568: hits=52 | hits/wk=2.02
+
+
+
+DOUBLES (AABC) core families >=2.00 hits/week — full span (1096 days)
+---------------------------------------------------------------------
+169: hits=338 | hits/wk=2.16
+016: hits=329 | hits/wk=2.10
+256: hits=329 | hits/wk=2.10
+456: hits=327 | hits/wk=2.09
+389: hits=326 | hits/wk=2.08
+038: hits=325 | hits/wk=2.08
+257: hits=324 | hits/wk=2.07
+019: hits=322 | hits/wk=2.06
+789: hits=322 | hits/wk=2.06
+458: hits=321 | hits/wk=2.05
+167: hits=319 | hits/wk=2.04
+123: hits=317 | hits/wk=2.02
+057: hits=315 | hits/wk=2.01
+378: hits=315 | hits/wk=2.01
+457: hits=315 | hits/wk=2.01
+479: hits=315 | hits/wk=2.01
+
+
+
+BACKTEST (quick) — predicting next-day DOUBLES (AABC) core family within each stream
+Period: last 180 days (ending 2026-01-26)
+Method: For each stream/day, use past-window hit rates (60/90/180d) to rank core families; check if next day's AABC core is in Top-5.
+
+Models tested:
+A (momentum): 60=0.45, 90=0.35, 180=0.20
+B (stability): 60=0.25, 90=0.35, 180=0.40
+Guardrail (simple): downweight rare cores (hits180<6), cooldown penalty if core hit <7 days ago.
+
+Total test cases (where next draw was AABC): 5794
+Top-5 capture rates:
+- A:  4.177%  (242/5794)
+- B:  4.177%  (242/5794)
+- A+guardrail: 4.177%  (242/5794)
+- B+guardrail: 4.142%  (240/5794)
+
+Takeaway: window-frequency alone is basically “baseline”. The real lift will come from seed/structure signals + your per-family stream-bias map (rank/percentile), with 60/90/180 used as a PRIOR/tiebreaker.
