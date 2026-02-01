@@ -1,0 +1,261 @@
+PK4 Northern Star App — VERY SPECIFIC USER GUIDE (New User Friendly)
+Last updated: 2026-02-01
+
+This guide tells you:
+1) Exactly what files you need
+2) Exactly how to run the app (online or offline)
+3) Exactly what to click inside the app
+4) When to update your files (WITHOUT you having to edit this guide)
+5) How to use the “Recompute Percentile Maps” button
+6) How Northern Star percentile-by-position works (Positions 1–78 individually)
+
+============================================================
+A) What this app does (in plain words)
+============================================================
+You upload:
+• A larger multi‑year Pick 4 history file (CSV or LotteryPost TXT)
+• (Optional but recommended) a “last 24 hours” Pick 4 file (CSV or LotteryPost TXT)
+
+The app then:
+• Builds “core” families using 3 digits (example core 389)
+• Ranks streams and shows where winners concentrate in the ranking list
+• Produces a “Northern Star” recommendation list based on the ranked streams
+• Optionally turns on “Rare Engine” (AAAB + AABB) when the climate is right
+• Optionally turns on “Ultra‑Rare” (AAAA / quads) when the climate is right
+
+IMPORTANT RULES:
+• It ignores Fireball/Wild Ball/multipliers — ONLY the main 0–9 Pick 4 winner is used.
+• Maryland is excluded by default (you can toggle it, but default is OFF for MD).
+
+============================================================
+B) What files you MUST have (every run)
+============================================================
+You must have at least ONE file, and usually TWO files:
+
+1) All‑states / All‑streams history (REQUIRED)
+   • Format: .csv OR LotteryPost export .txt
+   • Must contain: Date, State, Game, and the Pick 4 result for the main game.
+   • Example filename you used: lotterypost_search_results.csv
+
+2) 24‑hour map file (OPTIONAL but strongly recommended)
+   • Format: .csv OR LotteryPost export .txt
+   • Same kind of fields as the history file.
+   • Example filename you used: pk4 all 12 27 25.txt
+
+TIP (best practice):
+Put BOTH files in the same folder as the app file so browsing is easy.
+
+============================================================
+C) How to run the app (the easiest way)
+============================================================
+If you already have Python + Streamlit installed, do this:
+
+1) Open Command Prompt (Windows) and go to the folder that contains the app:
+   cd C:\pk4_app\
+
+2) Run:
+   streamlit run pk4_northern_star_app_2026-02-01_v2.py
+
+3) Your browser should open. If it doesn’t, Streamlit prints a link like:
+   http://localhost:8501
+   Copy/paste that into your browser.
+
+============================================================
+D) Offline setup (Windows) — step-by-step
+============================================================
+
+-----------------------------------------
+Option 1 (Recommended): Python + virtual environment
+-----------------------------------------
+1) Install Python 3.11+ from python.org
+   During install, CHECK:
+   ✅ “Add Python to PATH”
+
+2) Create a folder:
+   C:\pk4_app\
+
+3) Put the app .py file AND your data files into that folder:
+   • pk4_northern_star_app_2026-02-01_v2.py
+   • lotterypost_search_results.csv
+   • pk4 all 12 27 25.txt (optional but recommended)
+
+4) Open Command Prompt in that folder and run:
+   python -m venv .venv
+   .venv\Scripts\activate
+
+5) Install the required packages:
+   python -m pip install --upgrade pip
+   pip install streamlit pandas numpy python-dateutil
+
+6) Run the app:
+   streamlit run pk4_northern_star_app_2026-02-01_v2.py
+
+-----------------------------------------
+Option 2: WinPython (portable)
+-----------------------------------------
+1) Download a WinPython build and extract it
+2) Launch “WinPython Command Prompt”
+3) Go to your app folder:
+   cd C:\pk4_app\
+4) Install packages (only once):
+   python -m pip install streamlit pandas numpy python-dateutil
+5) Run:
+   streamlit run pk4_northern_star_app_2026-02-01_v2.py
+
+============================================================
+E) EXACTLY what to click in the app (first-time user)
+============================================================
+
+STEP 1 — Upload your multi‑year history file
+• Left sidebar → “Data”
+• Click: “All‑states history file”
+• Select your CSV/TXT (example: lotterypost_search_results.csv)
+
+STEP 2 — Upload your 24‑hour map file (recommended)
+• Left sidebar → “Data”
+• Click: “24h map file (optional…)”
+• Select your TXT/CSV (example: pk4 all 12 27 25.txt)
+
+STEP 3 — Confirm Maryland is excluded (default ON)
+• Left sidebar → “Exclude Maryland streams”
+• Leave checked (recommended for you)
+
+STEP 4 — Check the “Data freshness” panel (IMPORTANT)
+• Left sidebar → “Data freshness”
+You will see:
+• All‑states history most recent date + “age (days)”
+• 24h map most recent date + “age (days)”
+
+THIS is how you know if you need to update your files.
+You do NOT need to update this guide.
+The app tells you the most recent date inside your files.
+
+STEP 5 — Choose cores (3 digits)
+• Left sidebar → “Core selection”
+• Type one or more cores, separated by commas:
+  Example: 389, 016, 129
+
+STEP 6 — Choose your Northern Star window
+• Left sidebar → “Northern Star window”
+• Pick 180 or 365 days.
+  (This changes how stats are computed.)
+
+STEP 7 — Optional engines
+Rare Engine (AAAB + AABB)
+• Check or uncheck the Rare Engine trigger checkboxes.
+Ultra‑Rare (AAAA)
+• Check or uncheck the Ultra‑Rare trigger checkboxes.
+
+STEP 8 — Run / view results
+• The app automatically computes and shows:
+  • Stream rankings (AABC doubles)
+  • Northern Star buckets
+  • Position Percentile Map (RankPos 1–78 individually)
+
+============================================================
+F) “Recompute percentile maps now” button (what it does)
+============================================================
+Location:
+• Left sidebar, under “Data”
+
+Use this button when:
+• You replaced/updated your history CSV
+• You replaced/updated your 24h TXT
+• OR you changed cores/window and want a clean rebuild
+
+What it does:
+• Clears cached percentile maps inside the app
+• Forces the app to rebuild position percentiles
+• Updates “Percentiles last recomputed” timestamp shown in the sidebar
+
+NOTE:
+If you upload a different data file, the app auto-clears the cache anyway.
+The button is there so you can force it manually whenever you want.
+
+============================================================
+G) When should you update your files? (no guessing)
+============================================================
+Because your data changes:
+• 24-hour file changes daily
+• the long history changes periodically
+
+Use the “Data freshness” panel:
+• If the 24h file is not current (age > 1 day), refresh it.
+• If the long history file is old:
+  - recommended refresh cadence: every 14–30 days
+  - you decide based on the age shown in the app
+
+You never need to edit this guide because the app displays the newest date.
+
+============================================================
+H) Northern Star percentile-by-position (your exact requirement)
+============================================================
+The app builds a ranking list of streams.
+Each stream gets a Rank Position:
+• RankPos = 1, 2, 3 … up to 78 (or however many streams are present)
+
+The Position Percentile Map shows for EACH individual position:
+• HitCount
+• HitShare %
+• CumHitShare %
+• HitCountPctile
+
+Your definition is enforced:
+• “Top30” does NOT mean positions 1–30.
+• “Top30” means the TOP 10 positions that had the most winners.
+
+============================================================
+I) Minimum you need to keep on your computer
+============================================================
+Minimal (recommended):
+• The app .py file
+• Your long history CSV
+• Your 24h map TXT (recommended)
+
+Everything else can be regenerated by rerunning the app.
+
+END
+
+
+NEW in v3 — Local History Store (auto-updating, keeps app fast)
+------------------------------------------------------------
+
+What it does:
+- The app can now **save a rolling 3‑year history store on disk** after you upload your 3‑year file once.
+- When you upload the **24h file**, the app can **auto‑merge any new rows** into the store (so your baseline stays current).
+- The app can also **auto‑purge** anything older than rolling 3 years so the file does not grow forever.
+
+Where it saves:
+- A folder is created next to the app file called:  **pk4_local_store**
+- Inside it you will see:
+  - history_store.csv   (or history_store.parquet if Parquet is available)
+  - history_store_meta.json
+
+Parquet vs CSV:
+- If you install `pyarrow`, the app will automatically switch to **Parquet** (smaller + faster).
+- If you do NOT install it, the app uses **CSV** instead (still fully accurate; just larger).
+- To enable Parquet (optional): in your WinPython/venv terminal run:
+  - `pip install pyarrow`
+
+How to use it (in the sidebar under “Data”):
+1) Turn ON: ✅ “Use/maintain local history store”
+2) Leave ON (recommended defaults):
+   - ✅ “Auto‑merge 24h file into history store”
+   - ✅ “Auto‑purge beyond rolling 3 years”
+   - ✅ “Auto‑clear percentile cache if ≥7 days of new data added”
+3) Upload your 3‑year file once (master history).
+4) Upload your 24h file whenever you have it.
+5) If you forget to upload the 3‑year file next time:
+   - The app can still run **using the persisted local history store**.
+
+How to export a human‑readable copy (CSV):
+- In the sidebar, click:
+  - **“Download local history store (CSV)”**
+- This gives you a clean, readable file even if you are using Parquet.
+
+How the app tells you when updates are needed (no guide edits required):
+- In the sidebar you’ll see:
+  - “History most recent date … (age: X days)”
+  - “24h map most recent date … (age: X days)”
+- When the “age” looks too old for your preference (example: >14 days), upload a newer 24h file.
+- If the 3‑year baseline ever changes format/source, re‑upload it once to reset the store.
