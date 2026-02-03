@@ -1,0 +1,180 @@
+PICK 4 — NORTHERN STAR / NORTHERN LIGHTS APP
+OFFLINE + STREAMLIT CLOUD INSTRUCTIONS (v16)
+
+============================================================
+0) THE BIG IDEA (super simple)
+============================================================
+Think of this app like a “sorting hat” for Pick 4 plays.
+
+You give it:
+  1) A BIG history file (your 3‑year all‑states file)
+  2) OPTIONAL: a small “last 24 hours” file (the newest winners)
+
+It gives you:
+  • A ranked list of the BEST streams to focus on for a core
+  • A “Northern Lights” master playlist (best → worst plays across streams)
+  • Positional percentile maps (to see which ranked positions hit most)
+  • Optional backtest (to see how the model behaves on real history)
+  • Optional straights shortlist (after you already picked your boxes)
+
+============================================================
+1) FILES YOU NEED (two upload boxes on the left)
+============================================================
+A) All‑states history file (REQUIRED)
+   • Upload your 3‑year (or larger) all‑states file.
+   • Format: CSV or LotteryPost .txt.
+   • This is what the app uses to learn patterns.
+
+B) 24h map file (OPTIONAL)
+   • Upload your newest winners (last day / last 24 hours) file.
+   • Same format as the big history file.
+   • This is used for “today” pressure (due index / recent signals).
+
+IMPORTANT:
+- The app does NOT magically download new data by itself.
+- YOU still update your files when new draws happen.
+
+============================================================
+2) HOW OFTEN DO I UPDATE MY FILES?
+============================================================
+Look at the “Data freshness” box.
+
+It shows:
+  • All‑states history most recent date (and “age” in days)
+  • 24h map most recent date (and “age” in days)
+
+Rule of thumb:
+- If age is 0–1 days → you are basically current.
+- If age is 2+ days → you are behind and should update.
+
+So… even if you built a cache, you still update your HISTORY FILE
+whenever you want the app to include new results.
+
+============================================================
+3) DOES THE APP “SELF‑MAINTAIN” THE 3‑YEAR FILE?
+============================================================
+Right now:
+- The app caches computed STATS (baseline cache) to stay fast.
+- It does NOT automatically append new draws into your 3‑year file.
+
+So the answer is:
+✅ Cache is built in.
+❌ Auto‑maintaining your 3‑year history file is NOT built in (yet).
+
+If you want true “self‑maintained rolling 3‑year storage” (append new 24h
+rows + purge older rows automatically), that is a separate upgrade.
+
+============================================================
+4) SHOULD I BUILD BASELINE CACHE + RECOMPUTE PERCENTILE MAPS EVERY RUN?
+============================================================
+It won’t “hurt” accuracy, but it CAN hurt SPEED.
+
+A) Baseline cache builder
+- This is a speed tool.
+- Build it when:
+    • you upload a NEW all‑states file, or
+    • you change the core set you want cached, or
+    • you change the window (180 vs 365) and want both.
+- Building it every run is wasted work.
+
+B) Recompute percentile maps now
+- Recompute when:
+    • you updated your history file (new last date), or
+    • you changed the core logic and want refreshed maps.
+- Recomputing every run is usually unnecessary.
+
+BEST PRACTICE (fast + accurate):
+1) Update your files when new draws exist.
+2) Recompute percentile maps after you update files.
+3) Rebuild baseline cache after you update files (or when you add more cores).
+4) Normal daily use = do NOT rebuild every run.
+
+============================================================
+5) THE LEFT SIDEBAR (what each thing does)
+============================================================
+• Exclude Maryland streams
+  - If checked, Maryland is removed from ranking.
+
+• Recompute percentile maps now
+  - Refreshes the positional percentile maps.
+
+• Core selection (dropdown)
+  - Pick which core you’re viewing in “Core view”.
+
+• Cores to include for cache building / batch tools
+  - Pick multiple cores the cache builder will compute and save.
+
+============================================================
+6) THE MAIN TABS / SECTIONS
+============================================================
+A) Northern Lights (Master playlist)
+- This is your “best → worst” list across streams.
+- It merges Northern Star bucket picks from your selected cores.
+- It scores them using a universal MasterScore:
+    (recent hits/week) + (due pressure) + (position map strength)
+- Output includes:
+    • Ranked plays
+    • Stream
+    • Core
+    • Member
+    • Bucket
+    • MasterScore
+
+B) Core view
+- This is the detailed view for ONE core.
+- Shows:
+    • Stream ranking table
+    • Northern Star buckets (Top 12 BaseScore + DueIndex)
+    • Your positional percentile map (rank position behavior)
+
+C) Backtest (optional)
+- Lets you run the model on a historical date range.
+- Purpose: verify performance / stability.
+- Parameters are inside the backtest tab (date range selectors, etc.).
+
+D) Straights shortlist (optional last)
+- You only use this AFTER you already have box plays.
+- It recommends straight permutations to play last.
+- Goal: keep straights cheap and focused.
+
+============================================================
+7) WHAT “POSITIONAL PERCENTILE MAPS” MEAN
+============================================================
+A positional map answers:
+  “When the winner hits, what rank position does it usually appear in?”
+
+Example:
+- If the map shows the top 10 ranks contain a huge share of hits,
+  you should focus money on top ranks.
+
+You can have positional maps:
+- per core
+- and for Northern Lights master list
+
+They are NOT redundant:
+- Core maps help you inside one core.
+- Northern Lights map helps you compare plays across cores/streams.
+
+============================================================
+8) TROUBLESHOOTING
+============================================================
+If the app looks stuck:
+1) Confirm your history file is not corrupted.
+2) Try uploading only the all‑states file first.
+3) Then upload the 24h file.
+4) If Streamlit Cloud: open logs (Manage app) and copy the red error.
+
+If numbers look “wrong”:
+- Make sure your file includes the newest draws.
+- Check the “Data freshness” age.
+
+============================================================
+9) WHAT’S NEXT (your requested optimizations)
+============================================================
+✅ Straights tool optimization is included in v16 (memoized permutations).
+
+Optional future upgrades (if you want them):
+1) Rolling 3‑year self‑maintained store (auto append + auto purge)
+2) Faster batch baseline cache (parallel + progress + per‑core status)
+3) Backtest speed mode (sampled or cached window sets)
+
